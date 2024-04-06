@@ -204,6 +204,7 @@ void SimulateStarCameraGnss::run(Config &config, Parallel::CommunicatorPtr /*com
     if(orbitArc.size() && orbitArc.at(0).velocity.r()==0.)
       throw(Exception("orbit does not contain velocity data"));
 
+    // 读取姿态设置信息
     if(fileNameAttitudeInfo.empty())
     {
       logStatus<<"no attitude info provided, using nominal yaw-steering attitude"<<Log::endl;
@@ -221,12 +222,14 @@ void SimulateStarCameraGnss::run(Config &config, Parallel::CommunicatorPtr /*com
     const std::vector<Time> timesOrbit = orbitArc.times();
     const Time deltaTime = seconds2time(std::fabs(modelingResolution));
     std::vector<Time> times;
+
     for(UInt i=0; timesOrbit.front()+i*deltaTime<=timesOrbit.back(); i++)
       times.push_back(timesOrbit.front() + i*deltaTime);
+
     Polynomial polynomial(timesOrbit, interpolationDegree);
     {
       Matrix positionVelocity = polynomial.interpolate(times, orbitArc.matrix().column(1, 6), 1);
-      for(UInt idEpoch=0; idEpoch<times.size(); idEpoch++)
+      for(UInt idEpoch=0; idEpoch<times.size(); idEpoch++) // 为每一个历元计算yaw angle
         epochs.push_back(createDefaultEpoch(times.at(idEpoch), Vector3d(positionVelocity.slice(idEpoch, 0, 1, 3)), Vector3d(positionVelocity.slice(idEpoch, 3, 1, 3))));
     }
 
@@ -242,7 +245,7 @@ void SimulateStarCameraGnss::run(Config &config, Parallel::CommunicatorPtr /*com
         epochs.push_back(createDefaultEpoch(time, pos, vel));
         times.push_back(time);
       }
-    };
+    }; // 定义结构体（类似于函数），把每个历元的位置速度都简单积分出来
     keplerExtend(orbitArc.front().time, orbitArc.front().position, orbitArc.front().velocity, -deltaTime.seconds(), getAttitudeInfo(orbitArc.front().time).maxManeuverTime);
     keplerExtend(orbitArc.back().time,  orbitArc.back().position,  orbitArc.back().velocity,   deltaTime.seconds(), getAttitudeInfo(orbitArc.back().time).maxManeuverTime);
     std::sort(epochs.begin(), epochs.end(), [](auto &e1, auto &e2){ return e1.time<e2.time; });

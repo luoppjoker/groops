@@ -550,6 +550,7 @@ programs/conversion/sp3Format2Orbit.cpp
 programs/conversion/tle2Orbit.cpp
 programs/conversion/viennaMappingFunctionGrid2File.cpp
 programs/conversion/viennaMappingFunctionStation2File.cpp
+programs/conversion/EularAngle2StarCamera.cpp
 
 programs/deprecated/gnssPrn2SvnBlockVariables.cpp
 programs/deprecated/gridRectangular2NetCdf.cpp

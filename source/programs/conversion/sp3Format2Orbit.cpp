@@ -198,6 +198,7 @@ void Sp3Format2Orbit::run(Config &config, Parallel::CommunicatorPtr /*comm*/)
           if(String::startsWith(line, "V"))
           {
             satId = line.substr(1,3);
+
             Double x = String::toDouble(line.substr(4, 14));
             Double y = String::toDouble(line.substr(18, 14));
             Double z = String::toDouble(line.substr(32, 14));
