@@ -30,10 +30,24 @@ GnssParametrizationIonosphereSTEC::GnssParametrizationIonosphereSTEC(Config &con
     readConfig(config, "applyBendingCorrection",  applyBending,      Config::DEFAULT,  "1", "apply ionospheric correction");
     readConfig(config, "magnetosphere",           magnetosphere,     Config::MUSTSET,  "",  "");
     readConfig(config, "nameConstraint",          nameConstraint,    Config::OPTIONAL, "constraint.STEC", "used for parameter selection");
-    readConfig(config, "sigmaSTEC",               sigmaSTEC,         Config::DEFAULT,  "0",  "(0 = unconstrained) sigma [TECU] for STEC constraint");
+    readConfig(config, "sigmaSTEC",               exprSigmaSTEC,     Config::DEFAULT,  "0",  "expr. for sigma [TECU] for STEC constraint, variable E (elevation) available");
     if(isCreateSchema(config)) return;
 
     apply1stOrder = TRUE;
+
+    // can exprSigmaSTEC be evaluated to a constant?
+    // ---------------------------------------------
+    VariableList varList;
+    varList.undefineVariable("E");
+    exprSigmaSTEC->simplify(varList);
+    try
+    {
+      sigmaSTEC = (exprSigmaSTEC->evaluate(varList) > 0);
+    }
+    catch(std::exception &/*e*/)
+    {
+      sigmaSTEC = -1;
+    }
   }
   catch(std::exception &e)
   {
@@ -43,13 +57,45 @@ GnssParametrizationIonosphereSTEC::GnssParametrizationIonosphereSTEC(Config &con
 
 /***********************************************/
 
-void GnssParametrizationIonosphereSTEC::init(Gnss *gnss, Parallel::CommunicatorPtr /*comm*/)
+void GnssParametrizationIonosphereSTEC::init(Gnss *gnss, Parallel::CommunicatorPtr comm)
 {
   try
   {
     this->gnss = gnss;
     estimateSTEC    = TRUE;
     applyConstraint = FALSE;
+
+    if(sigmaSTEC > 0) // sigmaSTEC is constant -> fast version
+    {
+      for(UInt idEpoch=0; idEpoch<gnss->times.size(); idEpoch++)
+        for(auto recv : gnss->receivers)
+          if(recv->isMyRank() && recv->useable(idEpoch))
+            for(UInt idTrans=0; idTrans<recv->idTransmitterSize(idEpoch); idTrans++)
+              if(recv->observation(idTrans, idEpoch))
+                recv->observation(idTrans, idEpoch)->sigmaSTEC = sigmaSTEC;
+    }
+    else if(sigmaSTEC) // sigmaSTEC is expression
+    {
+      logStatus<<"compute STEC accuracy"<<Log::endl;
+      VariableList varList;
+      Log::Timer timer(gnss->times.size());
+      for(UInt idEpoch=0; idEpoch<gnss->times.size(); idEpoch++)
+      {
+        timer.loopStep(idEpoch);
+        for(auto recv : gnss->receivers)
+          if(recv->isMyRank() && recv->useable(idEpoch))
+            for(UInt idTrans=0; idTrans<recv->idTransmitterSize(idEpoch); idTrans++)
+              if(recv->observation(idTrans, idEpoch))
+              {
+                GnssObservationEquation eqn(*recv->observation(idTrans, idEpoch), *recv, *gnss->transmitters.at(idTrans), gnss->funcRotationCrf2Trf,
+                                            nullptr/*reduceModels*/, idEpoch, FALSE/*decorrelate*/, {}/*types*/);
+                varList.setVariable("E", eqn.elevationRecvLocal);
+                recv->observation(idTrans, idEpoch)->sigmaSTEC = exprSigmaSTEC->evaluate(varList);
+              } // for(recv, trans)
+      } // for(idEpoch)
+      Parallel::barrier(comm);
+      timer.loopEnd();
+    } // if(isSigmaSTEC)
   }
   catch(std::exception &e)
   {
@@ -78,29 +124,6 @@ void GnssParametrizationIonosphereSTEC::initParameter(GnssNormalEquationInfo &no
               count++;
     Parallel::reduceSum(count, 0, normalEquationInfo.comm);
     logInfo<<count%"%9i "s<<(applyConstraint ? "constrained " : "")<<"STEC parameters (preeliminated)"s<<Log::endl;
-
-  }
-  catch(std::exception &e)
-  {
-    GROOPS_RETHROW(e)
-  }
-}
-
-/***********************************************/
-
-// intersection point in ionosphere height
-// classic approach is to use ~450/500 km, not applicable for satellites flying possibly higher
-// Hence, satellite position + 50 km, no evidence if true, but LEOs are in principle flying
-// IN the ionosphere and so pierce point is set slightly higher
-static inline Vector3d intersection(const Vector3d &posRecv, const Vector3d &posTrans)
-{
-  try
-  {
-    const Vector3d k  = normalize(posRecv - posTrans); // line of sight from transmitter to receiver
-    const Double   r  = posRecv.r();
-    const Double   H  = std::max(DEFAULT_R+450e3, r+50e3);  // single layer ionosphere in 450 km or 50 km above satellite
-    const Double   rk = inner(k, posRecv);
-    return posRecv - (rk + std::sqrt(rk*rk + 2*r*H + H*H)) * k;
   }
   catch(std::exception &e)
   {
@@ -122,11 +145,14 @@ void GnssParametrizationIonosphereSTEC::observationCorrections(GnssObservationEq
     // Geophys. Res. Lett., 32, L23311, doi:10.1029/2005GL024342.
     // ----------------------------------------------------------
     // second order magentic effect
-    const Vector3d piercePoint = intersection(eqn.posRecv, eqn.posTrans);
-    const Rotary3d rotEarth    = Planets::celestial2TerrestrialFrame(eqn.timeRecv);
-    const Vector3d b           = rotEarth.inverseRotate(magnetosphere->magenticFieldVector(eqn.timeRecv, rotEarth.rotate(piercePoint))); // magentic field vector in CRF
-    const Vector3d k           = normalize(eqn.posRecv - eqn.posTrans); // line of sight
-    const Double   s           = 1e16*7527.*LIGHT_VELOCITY*inner(b, k);
+    constexpr Double   radiusIono  = 6371e3+450e3;                          // single layer ionosphere in 450 km
+    const     Double   rRecv       = std::min(eqn.posRecv.r(), radiusIono); // LEO satellites flying possibly higher
+    const     Vector3d k           = normalize(eqn.posRecv-eqn.posTrans);   // direction from transmitter
+    const     Double   rk          = inner(eqn.posRecv, k);
+    const     Vector3d piercePoint = eqn.posRecv - (std::sqrt(rk*rk+radiusIono*radiusIono-rRecv*rRecv)+rk) * k;
+    const     Rotary3d rotEarth    = Planets::celestial2TerrestrialFrame(eqn.timeRecv);
+    const     Vector3d b           = rotEarth.inverseRotate(magnetosphere->magenticFieldVector(eqn.timeRecv, rotEarth.rotate(piercePoint))); // magentic field vector in CRF
+    const     Double   s           = 1e16*7527.*LIGHT_VELOCITY*inner(b, k);
     // third order
     constexpr Double r = 1e16*(2437 * 0.66 * (20.-6.)/(4.55-1.38)*1e-6) * 1e16;
     // bending
@@ -173,7 +199,7 @@ void GnssParametrizationIonosphereSTEC::observationCorrections(GnssObservationEq
 
     // add additional constraining equation
     // ------------------------------------
-    if(applyConstraint)
+    if(applyConstraint && (eqn.sigmaSTEC > 0) && !std::isnan(eqn.sigmaSTEC))
     {
       // extend l, A, and B by one row
       for(Matrix &A : std::vector<std::reference_wrapper<Matrix>>{eqn.l, eqn.A, eqn.B})
@@ -184,8 +210,8 @@ void GnssParametrizationIonosphereSTEC::observationCorrections(GnssObservationEq
       }
 
       // constrain STEC;
-      eqn.l(eqn.l.rows()-1)    = -eqn.dSTEC/sigmaSTEC; // constrain towards zero (0-x0)
-      eqn.B(eqn.B.rows()-1, 0) =  1./sigmaSTEC;        // in TECU
+      eqn.l(eqn.l.rows()-1)    = -eqn.dSTEC/eqn.sigmaSTEC; // constrain towards zero (0-f(x0))
+      eqn.B(eqn.B.rows()-1, 0) =  1./eqn.sigmaSTEC;        // in TECU
     }
   }
   catch(std::exception &e)

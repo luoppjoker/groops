@@ -1254,10 +1254,10 @@ The model for the different observation types can be described as
 \begin{equation}\label{gnssParametrizationType:gnssFullModel}
 \begin{split}
   f[\tau\nu a]_r^s(\M x) &= \text{geometry}(\M r_r^s) + \text{clock}^s(t) + \text{clock}_r(t) \\
-               &+ \text{iono}([tn],t,\M r_r^s) + \text{tropo}(t,\M r_r^s) \\
-               &+ \text{ant}[\tau\nu a]^s  + \text{ant}[\tau\nu a]_r \\
+               &+ \text{ionosphere}([\tau\nu],t,\M r_r^s) + \text{troposphere}(t,\M r_r^s) \\
+               &+ \text{antenna}[\tau\nu a]^s  + \text{antenna}[\tau\nu a]_r \\
                &+ \text{bias}[\tau\nu a]^s + \text{bias}[\tau\nu a]_r
-               + \lambda[Ln] N[Lna]_r^s + \text{other}(\ldots) + \epsilon[\tau\nu a]_r^s
+               + \lambda[L\nu] N[L\nu a]_r^s + \text{other}(\ldots) + \epsilon[\tau\nu a]_r^s
 \end{split}
 \end{equation}
 The notation $[\tau\nu a]_r^s$ describes the
@@ -1276,11 +1276,11 @@ from the observation equations before accumulating the normal equations.
 This is similar to using the ionosphere-free linear combination as observations
 but only one STEC parameter is needed for an arbitrary number of observation types.
 
-The influcence to the code and phase observation is modelled as
+The influence on the code and phase observation is modeled as
 \begin{equation}\label{gnssParametrizationType:IonosphereSTEC:STEC}
 \begin{split}
-f_C(STEC) &= \frac{40.3}{f^2}STEC + \frac{7525\M b^T\M k}{f^3}STEC +  \frac{r}{f^4}STEC^2 \\
-f_L(STEC) &= -\frac{40.3}{f^2}STEC - \frac{7525\M b^T\M k}{2f^3}STEC - \frac{r}{3f^4}STEC^2 + \text{bending}(E)STEC^2
+\text{ionosphere}([C\nu], STEC) &=  \frac{40.3}{f_{\nu}^2}STEC + \frac{7525\M b^T\M k}{f_{\nu}^3}STEC +  \frac{r}{f_{\nu}^4}STEC^2 \\
+\text{ionosphere}([L\nu], STEC) &= -\frac{40.3}{f_{\nu}^2}STEC - \frac{7525\M b^T\M k}{2f_{\nu}^3}STEC - \frac{r}{3f_{\nu}^4}STEC^2 + \text{bending}(E)STEC^2
 \end{split}
 \end{equation}
 The second order term depends on the \configClass{magnetosphere}{magnetosphereType} $\M b$
@@ -1306,7 +1306,7 @@ Name & Type & Annotation\\
 \hfuzz=500pt\includegraphics[width=1em]{element.pdf}~applyBendingCorrection & \hfuzz=500pt boolean & \hfuzz=500pt apply ionospheric correction\\
 \hfuzz=500pt\includegraphics[width=1em]{element-mustset.pdf}~magnetosphere & \hfuzz=500pt \hyperref[magnetosphereType]{magnetosphere} & \hfuzz=500pt \\
 \hfuzz=500pt\includegraphics[width=1em]{element.pdf}~nameConstraint & \hfuzz=500pt string & \hfuzz=500pt used for parameter selection\\
-\hfuzz=500pt\includegraphics[width=1em]{element.pdf}~sigmaSTEC & \hfuzz=500pt double & \hfuzz=500pt (0 = unconstrained) sigma [TECU] for STEC constraint\\
+\hfuzz=500pt\includegraphics[width=1em]{element.pdf}~sigmaSTEC & \hfuzz=500pt expression & \hfuzz=500pt expr. for sigma [TECU] for STEC constraint, variable E (elevation) available\\
 \hline
 \end{tabularx}
 
@@ -1350,19 +1350,25 @@ Name & Type & Annotation\\
 
 
 \subsection{IonosphereMap}\label{gnssParametrizationType:ionosphereMap}
-TODO: reading and writing ionosphere maps not implemented yet.
-% A priori ionopshere model can be provided with \configFile{inputfileMap}{gnssIonosphereMaps}.
+Apriori VTEC maps can be removed from the observations with
+\configFile{inputfileGriddedDataTimeSeries}{griddedDataTimeSeries}
+(e.g. from \program{GnssIonex2GriddedDataTimeSeries}).
 
-The ionosphere is parametrized in terms of $[TECU]$ as a \configClass{temporal}{parametrizationTemporalType}ly
+The ionosphere is parametrized in terms of $[TECU]$ in a single layer sphere with
+\config{radiusIonosphericLayer} as a \configClass{temporal}{parametrizationTemporalType}ly
 changing (e.g. hourly linear splines) spherical harmonics expansion
 \begin{equation}
   VTEC(\lambda,\theta,t) = \sum_{n=0}^{n_{max}} \sum_{m=0}^n c_{nm}(t)C_{nm}(\lambda,\theta)+s_{nm}(t)S_{nm}(\lambda,\theta)
 \end{equation}
 up to \config{maxDegree}=\verb|15| in a solar-geomagentic frame defined
-by \configClass{magnetosphere}{magnetosphereType}.
-The VTEC values are mapped to STEC values via eq.~\eqref{gnssParametrizationType:IonosphereVTEC:STEC}.
+by \configClass{magnetosphere}{magnetosphereType}. The VTEC values are mapped to STEC values
+in the observation equations via eq.~\eqref{gnssParametrizationType:IonosphereVTEC:STEC}.
 
-Local and short-term scintillations can be considered by adding constrained
+The estimated VTEC inclusive the apriori \configFile{inputfileGriddedDataTimeSeries}{griddedDataTimeSeries}
+can be written to \configFile{outputfileGriddedDataTimeSeries}{griddedDataTimeSeries}
+evaluated at \configClass{outputGrid}{gridType} and \configClass{outputTimeSeries}{timeSeriesType}.
+
+Local and short-term scintillations should be considered by adding constrained
 \configClass{parametrization:ionosphereSTEC}{gnssParametrizationType:ionosphereSTEC}.
 To account for signal biases add
 \configClass{parametrization:tecBiases}{gnssParametrizationType:tecBiases}.
@@ -1381,8 +1387,13 @@ Name & Type & Annotation\\
 \hline
 \hfuzz=500pt\includegraphics[width=1em]{element.pdf}~name & \hfuzz=500pt string & \hfuzz=500pt \\
 \hfuzz=500pt\includegraphics[width=1em]{element-mustset-unbounded.pdf}~selectReceivers & \hfuzz=500pt \hyperref[platformSelectorType]{platformSelector} & \hfuzz=500pt \\
-\hfuzz=500pt\includegraphics[width=1em]{element-mustset.pdf}~maxDegree & \hfuzz=500pt uint & \hfuzz=500pt spherical harmonics\\
-\hfuzz=500pt\includegraphics[width=1em]{element-unbounded.pdf}~temporal & \hfuzz=500pt \hyperref[parametrizationTemporalType]{parametrizationTemporal} & \hfuzz=500pt temporal evolution of TEC values\\
+\hfuzz=500pt\includegraphics[width=1em]{element.pdf}~outputfileGriddedDataTimeSeries & \hfuzz=500pt filename & \hfuzz=500pt single layer VTEC [TECU]\\
+\hfuzz=500pt\includegraphics[width=1em]{element-unbounded.pdf}~outputGrid & \hfuzz=500pt \hyperref[gridType]{grid} & \hfuzz=500pt \\
+\hfuzz=500pt\includegraphics[width=1em]{element-unbounded.pdf}~outputTimeSeries & \hfuzz=500pt \hyperref[timeSeriesType]{timeSeries} & \hfuzz=500pt \\
+\hfuzz=500pt\includegraphics[width=1em]{element.pdf}~inputfileGriddedDataTimeSeries & \hfuzz=500pt filename & \hfuzz=500pt single layer VTEC [TECU]\\
+\hfuzz=500pt\includegraphics[width=1em]{element-mustset.pdf}~maxDegree & \hfuzz=500pt uint & \hfuzz=500pt spherical harmonics parametrization\\
+\hfuzz=500pt\includegraphics[width=1em]{element-unbounded.pdf}~temporal & \hfuzz=500pt \hyperref[parametrizationTemporalType]{parametrizationTemporal} & \hfuzz=500pt temporal evolution of VTEC values\\
+\hfuzz=500pt\includegraphics[width=1em]{element.pdf}~radiusIonosphericLayer & \hfuzz=500pt double & \hfuzz=500pt [m] radius of ionospheric single layer\\
 \hfuzz=500pt\includegraphics[width=1em]{element.pdf}~mapR & \hfuzz=500pt double & \hfuzz=500pt [m] constant of MSLM mapping function\\
 \hfuzz=500pt\includegraphics[width=1em]{element.pdf}~mapH & \hfuzz=500pt double & \hfuzz=500pt [m] constant of MSLM mapping function\\
 \hfuzz=500pt\includegraphics[width=1em]{element.pdf}~mapAlpha & \hfuzz=500pt double & \hfuzz=500pt constant of MSLM mapping function\\
@@ -1590,7 +1601,9 @@ is introduced:
   \bar{\M x} = \M Q^T \M x.
 \end{equation}
 The new parameters corresponding to eigen values $\lambda>0$ are estimable,
-the others are left out (set to zero). The missing linear combinations,
+the others are left out (set to zero). The behavior can be controlled by explicitly setting up to two bias types
+with \configClass{typesClockDatum}{gnssType} for each transmitter to zero. These then define the ionosphere-free clock datum
+of the transmitter. The missing linear combinations,
 which depend on the STEC parameters, can be added with
 \configClass{parametrization:tecBiases}{gnssParametrizationType:tecBiases}.
 
@@ -1618,6 +1631,7 @@ Name & Type & Annotation\\
 \hfuzz=500pt\includegraphics[width=1em]{element-unbounded.pdf}~selectTransmitters & \hfuzz=500pt \hyperref[platformSelectorType]{platformSelector} & \hfuzz=500pt \\
 \hfuzz=500pt\includegraphics[width=1em]{element-unbounded.pdf}~selectReceivers & \hfuzz=500pt \hyperref[platformSelectorType]{platformSelector} & \hfuzz=500pt \\
 \hfuzz=500pt\includegraphics[width=1em]{element.pdf}~linearGlonassBias & \hfuzz=500pt boolean & \hfuzz=500pt bias depends linear on frequency channel number\\
+\hfuzz=500pt\includegraphics[width=1em]{element-unbounded.pdf}~typesClockDatum & \hfuzz=500pt \hyperref[gnssType]{gnssType} & \hfuzz=500pt first two matching types define the ionosphere free transmitter clock (e.g. C1WG, C2WG)\\
 \hfuzz=500pt\includegraphics[width=1em]{element.pdf}~nameConstraint & \hfuzz=500pt string & \hfuzz=500pt used for parameter selection\\
 \hfuzz=500pt\includegraphics[width=1em]{element.pdf}~sigmaZeroMeanConstraint & \hfuzz=500pt double & \hfuzz=500pt (0 = unconstrained) sigma [m] for null space constraint\\
 \hline
@@ -2144,6 +2158,7 @@ Name & Type & Annotation\\
 Performs a least squares adjustment like \configClass{processingStep:estimate}{gnssProcessingStepType:estimate}
 but with additional integer phase ambiguity resolution.
 After this step all resolved ambiguities are removed from the normal equation system.
+Only ambiguites are resolved with involved \configClass{selectTransmitters/Receivers}{platformSelectorType}.
 
 Integer ambiguity resolution is performed based on the least squares ambiguity decorrelation adjustment
 (LAMBDA) method (Teunissen 1995, DOI \href{https://doi.org/10.1007/BF00863419}{10.1007/BF00863419}), specifically
@@ -2176,6 +2191,8 @@ This trade-off is necessary to cope with large numbers of ambiguities.
 Name & Type & Annotation\\
 \hline
 \hfuzz=500pt\includegraphics[width=1em]{element.pdf}~outputfileAmbiguities & \hfuzz=500pt filename & \hfuzz=500pt resolved ambiguities\\
+\hfuzz=500pt\includegraphics[width=1em]{element-unbounded.pdf}~selectTransmitters & \hfuzz=500pt \hyperref[platformSelectorType]{platformSelector} & \hfuzz=500pt only resolve ambiguities with these participating transmitters\\
+\hfuzz=500pt\includegraphics[width=1em]{element-unbounded.pdf}~selectReceivers & \hfuzz=500pt \hyperref[platformSelectorType]{platformSelector} & \hfuzz=500pt only resolve ambiguities with these participating receivers\\
 \hfuzz=500pt\includegraphics[width=1em]{element.pdf}~sigmaMaxResolve & \hfuzz=500pt double & \hfuzz=500pt max. allowed std. dev. of ambiguity to resolve [cycles]\\
 \hfuzz=500pt\includegraphics[width=1em]{element.pdf}~searchBlockSize & \hfuzz=500pt uint & \hfuzz=500pt block size for blocked integer search\\
 \hfuzz=500pt\includegraphics[width=1em]{element.pdf}~maxSearchSteps & \hfuzz=500pt uint & \hfuzz=500pt max. steps of integer search for each block\\
@@ -6886,6 +6903,9 @@ Name & Type & Annotation\\
 
 \section{PlatformSelector}\label{platformSelectorType}
 Select a list of platforms (stations, satellites, ...).
+In a first step all platforms are selected if first selector \config{exclude}s platforms
+otherwise all platforms excluded. When every selector from top to bottom selects or deselects
+(with \config{exclude}) the matching platforms.
 
 See also \program{GnssProcessing}.
 
@@ -6907,6 +6927,7 @@ Name & Type & Annotation\\
 \hfuzz=500pt\includegraphics[width=1em]{element.pdf}~name & \hfuzz=500pt string & \hfuzz=500pt wildcards: * and ?\\
 \hfuzz=500pt\includegraphics[width=1em]{element.pdf}~markerName & \hfuzz=500pt string & \hfuzz=500pt wildcards: * and ?, from platform\\
 \hfuzz=500pt\includegraphics[width=1em]{element.pdf}~markerNumber & \hfuzz=500pt string & \hfuzz=500pt wildcards: * and ?, from platform\\
+\hfuzz=500pt\includegraphics[width=1em]{element.pdf}~exclude & \hfuzz=500pt boolean & \hfuzz=500pt deselect matching platforms\\
 \hline
 \end{tabularx}
 
@@ -6924,6 +6945,7 @@ if previous names are not available (e.g. without observation file).
 Name & Type & Annotation\\
 \hline
 \hfuzz=500pt\includegraphics[width=1em]{element-mustset.pdf}~inputfileStringTable & \hfuzz=500pt filename & \hfuzz=500pt list of names with alternatives\\
+\hfuzz=500pt\includegraphics[width=1em]{element.pdf}~exclude & \hfuzz=500pt boolean & \hfuzz=500pt deselect first matching platforms\\
 \hline
 \end{tabularx}
 
@@ -6953,12 +6975,13 @@ Name & Type & Annotation\\
 \hfuzz=500pt\quad\includegraphics[width=1em]{connector.pdf}\includegraphics[width=1em]{element.pdf}~sic & \hfuzz=500pt string & \hfuzz=500pt wildcards: * and ?\\
 \hfuzz=500pt\quad\includegraphics[width=1em]{connector.pdf}\includegraphics[width=1em]{element.pdf}~sp3 & \hfuzz=500pt string & \hfuzz=500pt wildcards: * and ?\\
 \hfuzz=500pt\includegraphics[width=1em]{connector.pdf}\includegraphics[width=1em]{element-mustset.pdf}~other & \hfuzz=500pt  & \hfuzz=500pt other types\\
+\hfuzz=500pt\includegraphics[width=1em]{element.pdf}~exclude & \hfuzz=500pt boolean & \hfuzz=500pt deselect matching platforms\\
 \hline
 \end{tabularx}
 
 
 \subsection{Exclude}\label{platformSelectorType:exclude}
-Select all receivers/transmitters except
+Deselects all selected receivers/transmitters of
 \configClass{selector}{platformSelectorType}.
 
 
