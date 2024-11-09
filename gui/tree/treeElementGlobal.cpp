@@ -92,17 +92,18 @@ void TreeElementGlobal::updateParserResultsInScope()
 
 /***********************************************/
 
-void TreeElementGlobal::updateParserResults(VariableList &varList)
+VariableListPtr TreeElementGlobal::updateParserResults(VariableListPtr varListOld, Bool /*addVariableInReturn*/)
 {
   try
   {
+    varList = std::make_shared<const VariableList>(*varListOld); // make copy
     // as the order is irrelevant -> add all variables before
     for(auto child : children())
       if(!child->label().isEmpty() && !child->disabled())
-        varList.setVariable(child->label().toStdString(), (child->isLinked() ? "{"+child->selectedValue()+"}" : child->selectedValue()).toStdString());
-    this->varList = varList;
+        std::const_pointer_cast<VariableList>(varList)->setVariable(child->label().toStdString(), (child->isLinked() ? "{"+child->selectedValue()+"}" : child->selectedValue()).toStdString());
     for(auto child : children_[selectedIndex()])
-      child->updateParserResults(varList);
+      child->updateParserResults(varList, false);
+    return varList;
   }
   catch(std::exception &e)
   {
@@ -134,7 +135,7 @@ void TreeElementGlobal::updateLinks(QMap<QString, QString> &labelTypes)
     // as the order is irrelevant -> add all links before
     for(auto child : children())
       if(!child->label().isEmpty() && !child->disabled())
-        labelTypes[child->label()] = child->type();
+        labelTypes[child->label()] = getLinkType(child->type());
     this->labelTypes = labelTypes;
     for(auto child : children_[selectedIndex()])
       child->updateLinks(labelTypes);
