@@ -35,7 +35,8 @@ See \program{DoodsonHarmonicsCalculateAdmittance}.
 
 /***** CONSTANTS ********************************/
 
-const char *const FILE_ADMITTANCE_TYPE = "admittance";
+const char *const FILE_ADMITTANCE_TYPE    = "admittance";
+constexpr UInt    FILE_ADMITTANCE_VERSION = std::max(UInt(20200123), FILE_BASE_VERSION);
 
 /***** CLASS ***********************************/
 
@@ -43,15 +44,15 @@ const char *const FILE_ADMITTANCE_TYPE = "admittance";
 class Admittance
 {
 public:
-/// List of major tides.
-std::vector<Doodson> doodsonMajor;
+  /// List of major tides.
+  std::vector<Doodson> doodsonMajor;
 
-/// List of minor tides (inclusive major tides).
-std::vector<Doodson> doodsonMinor;
+  /// List of minor tides (inclusive major tides).
+  std::vector<Doodson> doodsonMinor;
 
-/** @brief Interpolation matrix.
-Dimension: major count times minor count. */
-Matrix admittance;
+  /** @brief Interpolation matrix.
+  Dimension: major count times minor count. */
+  Matrix admittance;
 };
 
 /***** FUNCTIONS *******************************/
